@@ -24,7 +24,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.ccl.dasteyaar"
+      "package": "com.dasteyaar.app"
     },
     "web": {
       "output": "static",
@@ -54,7 +54,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "abcd89b6-16ee-4e80-b76d-cfa1eb96e017"
+        "projectId": "cec833d4-d998-4b00-93c1-9f7aefe6702a"
       }
     }
   }

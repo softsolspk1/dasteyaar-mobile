@@ -23,7 +23,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import api from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 import { BrandColors } from '../../constants/theme';
 import {
   ShowcaseStatusBar,
@@ -38,6 +40,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 export default function PrescriptionsScreen() {
   const { colors } = useTheme();
+  const { doctor } = useAuth();
 
   const [prescriptions, setPrescriptions] = useState<any[]>([]);
   const [filteredPrescriptions, setFilteredPrescriptions] = useState<any[]>([]);
@@ -51,6 +54,7 @@ export default function PrescriptionsScreen() {
   const [selectedPatient, setSelectedPatient] = useState<any>(null);
   const [productMenuVisible, setProductMenuVisible] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
+  const [couponCode, setCouponCode] = useState('');
 
   // Filter and search states
   const [filterStatus, setFilterStatus] = useState('all');
@@ -229,7 +233,16 @@ export default function PrescriptionsScreen() {
     setProductMenuVisible(false);
   };
 
-  const pickImage = async () => {
+  const pickImage = () => {
+    // RX-02: prescriptions may be multi-page PDFs, not just photos
+    Alert.alert('Prescription Image', 'Choose a file type', [
+      { text: 'Photo', onPress: pickPrescriptionImages },
+      { text: 'PDF Document', onPress: pickPrescriptionDocument },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const pickPrescriptionImages = async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -238,6 +251,22 @@ export default function PrescriptionsScreen() {
       });
 
       // result.canceled on web? in Expo SDK, check structure defensively
+      if (!result.canceled && result.assets) {
+        setSelectedFiles((prev) => [...prev, ...result.assets]);
+      }
+    } catch (err) {
+
+    }
+  };
+
+  const pickPrescriptionDocument = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'image/jpeg', 'image/png'],
+        multiple: true,
+        copyToCacheDirectory: true,
+      });
+
       if (!result.canceled && result.assets) {
         setSelectedFiles((prev) => [...prev, ...result.assets]);
       }
@@ -260,10 +289,44 @@ export default function PrescriptionsScreen() {
       return;
     }
 
+    // If a coupon code was entered, validate it up-front so we fail fast before
+    // creating the prescription/order. On success it's forwarded to /prescriptions.
+    let validatedCouponCode: string | undefined;
+    if (couponCode.trim()) {
+      try {
+        const qty = Number(newPrescription.selected_product.quantity) || 1;
+        const orderTotal = selectedProduct?.price ? selectedProduct.price * qty : undefined;
+
+        const validateResponse = await api.post('/coupons/validate', {
+          coupon_code: couponCode.trim().toUpperCase(),
+          doctor_id: doctor?.id,
+          order_total: orderTotal,
+          items: [
+            {
+              name: selectedProduct?.name,
+              sku: selectedProduct?.sku,
+              quantity: qty,
+              price: selectedProduct?.price,
+            },
+          ],
+        });
+
+        validatedCouponCode = couponCode.trim().toUpperCase();
+        const discountAmount = validateResponse?.data?.data?.discount_amount;
+        if (discountAmount !== undefined) {
+          Alert.alert('Coupon Applied', `A discount of Rs. ${discountAmount} will be applied to this order.`);
+        }
+      } catch (error: any) {
+        const msg = error?.response?.data?.error?.message || 'Invalid or expired coupon code';
+        Alert.alert('Invalid Coupon', msg);
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       // Convert string values to numbers and validate them
-      const prescriptionData = {
+      const prescriptionData: any = {
         patient_id: newPrescription.patient_id,
         dosage_frequency: newPrescription.dosage_frequency,
         priority: newPrescription.priority,
@@ -272,6 +335,10 @@ export default function PrescriptionsScreen() {
           quantity: Number(newPrescription.selected_product.quantity),
         },
       };
+
+      if (validatedCouponCode) {
+        prescriptionData.coupon_code = validatedCouponCode;
+      }
 
       // Validate the data
       if (isNaN(prescriptionData.selected_product.quantity) || prescriptionData.selected_product.quantity < 1) {
@@ -304,11 +371,17 @@ export default function PrescriptionsScreen() {
         }
       }
 
-      Alert.alert('Success', response?.data?.message || 'Prescription created successfully');
+      const couponWarning = response?.data?.data?.coupon_warning;
+      Alert.alert(
+        'Success',
+        (response?.data?.message || 'Prescription created successfully') +
+          (couponWarning ? `\n\nNote: ${couponWarning}` : '')
+      );
       setShowDialog(false);
       setSelectedPatient(null);
       setSelectedProduct(null);
       setSelectedFiles([]);
+      setCouponCode('');
       setNewPrescription({
         patient_id: '',
         dosage_frequency: '',
@@ -466,6 +539,7 @@ export default function PrescriptionsScreen() {
               setShowDialog(false);
               setSelectedPatient(null);
               setSelectedProduct(null);
+              setCouponCode('');
             }}
             style={[styles.dialog, { backgroundColor: colors.surface }]}
           >
@@ -579,9 +653,22 @@ export default function PrescriptionsScreen() {
                 />
 
                 <Text style={[styles.label, { color: colors.onSurface }]}>Prescription Image</Text>
-                <Button title="Add Image" icon="camera" variant="outlined" onPress={pickImage} style={styles.input} />
+                <Button title="Add Prescription File" icon="camera" variant="outlined" onPress={pickImage} style={styles.input} />
 
                 {selectedFiles.length > 0 && <Text style={{ color: colors.onSurface, marginBottom: 24 }}>{selectedFiles.length} image(s) selected</Text>}
+
+                <Text style={[styles.label, { color: colors.onSurface }]}>Have a coupon code?</Text>
+                <TextInput
+                  label="Coupon Code (optional)"
+                  value={couponCode}
+                  onChangeText={(text) => setCouponCode(text.toUpperCase())}
+                  mode="outlined"
+                  autoCapitalize="characters"
+                  style={[styles.input, { backgroundColor: colors.surface }]}
+                  textColor={colors.onSurface}
+                  outlineColor={colors.outline}
+                  activeOutlineColor={colors.primary}
+                />
               </ScrollView>
             </Dialog.ScrollArea>
 
@@ -592,6 +679,7 @@ export default function PrescriptionsScreen() {
                   setShowDialog(false);
                   setSelectedPatient(null);
                   setSelectedProduct(null);
+                  setCouponCode('');
                 }}
                 variant="text"
               />

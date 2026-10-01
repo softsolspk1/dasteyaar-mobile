@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, ScrollView, RefreshControl, Text, TouchableOpacity, Image, Linking } from 'react-native';
+import { View, StyleSheet, ScrollView, RefreshControl, Text, TouchableOpacity, Linking } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ProfileDrawer from '../../components/ui/ProfileDrawer';
 import NotificationsDrawer from '../../components/ui/NotificationsDrawer';
@@ -154,7 +155,7 @@ export default function DashboardScreen() {
           <Image
             source={require('../../assets/images/logo.png')}
             style={styles.logoImage}
-            resizeMode="contain"
+            contentFit="contain"
           />
         </View>
 

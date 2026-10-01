@@ -66,6 +66,7 @@ function RootLayoutNav() {
         <Stack.Screen name="prescription/[id]" options={{ headerShown: true, title: 'Prescription Details', headerStyle: { backgroundColor: BrandColors.primary }, headerTintColor: BrandColors.white }} />
         <Stack.Screen name="prescription/edit/[id]" options={{ headerShown: true, title: 'Edit Prescription', headerStyle: { backgroundColor: BrandColors.primary }, headerTintColor: BrandColors.white }} />
         <Stack.Screen name="order/[id]" options={{ headerShown: true, title: 'Order Details', headerStyle: { backgroundColor: BrandColors.primary }, headerTintColor: BrandColors.white }} />
+        <Stack.Screen name="coupon-requests" options={{ headerShown: true, title: 'Coupon Requests', headerStyle: { backgroundColor: BrandColors.primary }, headerTintColor: BrandColors.white }} />
       </Stack>
       <StatusBar style="auto" />
     </ThemeProvider>

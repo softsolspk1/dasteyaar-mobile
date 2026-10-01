@@ -288,6 +288,17 @@ export default function ProfileDrawer({ visible, onClose }: ProfileDrawerProps) 
             <View style={[styles.card, { backgroundColor: colors.surface }]}>
               <Title style={{ color: colors.text }}>Settings</Title>
               <List.Item
+                title="Coupon Requests"
+                description="Request and track discount coupons"
+                left={props => <List.Icon {...props} icon="ticket-percent" />}
+                right={props => <List.Icon {...props} icon="chevron-right" />}
+                onPress={() => {
+                  onClose();
+                  router.push('/coupon-requests');
+                }}
+              />
+              <Divider />
+              <List.Item
                 title="Change Password"
                 left={props => <List.Icon {...props} icon="lock" />}
                 right={props => <List.Icon {...props} icon="chevron-right" />}

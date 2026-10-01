@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useCallback, useMemo } from 'react';
 import { storage } from '../utils';
 import api from '../services/api';
 
@@ -26,11 +26,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [doctor, setDoctor] = useState<Doctor | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    checkAuth();
-  }, []);
-
-  const checkAuth = async () => {
+  const checkAuth = useCallback(async () => {
     try {
       const token = await storage.getItem('accessToken');
       if (token) {
@@ -48,9 +44,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const login = async (email: string, password: string) => {
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
+
+  const login = useCallback(async (email: string, password: string) => {
     try {
       const response = await api.post('/auth/doctor/login', { email, password });
       const { accessToken, refreshToken, doctor: doctorData } = response.data.data;
@@ -62,9 +62,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error: any) {
       throw error.response?.data?.error || { message: 'Login failed' };
     }
-  };
+  }, []);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try {
       await api.post('/auth/logout');
     } catch (error) {
@@ -73,18 +73,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await storage.deleteItem('refreshToken');
       setDoctor(null);
     }
-  };
+  }, []);
 
-  const refreshDoctor = async () => {
+  const refreshDoctor = useCallback(async () => {
     try {
       const response = await api.get('/doctors/me');
       setDoctor(response.data.data);
     } catch (error) {
     }
-  };
+  }, []);
+
+  const value = useMemo(
+    () => ({ doctor, isLoading, login, logout, refreshDoctor }),
+    [doctor, isLoading, login, logout, refreshDoctor],
+  );
 
   return (
-    <AuthContext.Provider value={{ doctor, isLoading, login, logout, refreshDoctor }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

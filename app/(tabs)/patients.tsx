@@ -6,7 +6,9 @@ import { Dialog, Portal, TextInput, SegmentedButtons, Surface, Divider, useTheme
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import api from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 import { BrandColors, ShowcaseDesign } from '../../constants/theme';
 import { ShowcaseStatusBar, AppHeader, Card, FAB, Input, Button, Badge } from '../../components/showcase';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,6 +16,7 @@ import { setAddPatientDialogTrigger } from './_layout';
 
 export default function PatientsScreen() {
   const { colors } = useTheme();
+  const { doctor } = useAuth();
   const params = useLocalSearchParams();
   const { cities, cityNames } = useCities();
   const [searchQuery, setSearchQuery] = useState('');
@@ -41,6 +44,8 @@ export default function PatientsScreen() {
     priority: 'normal',
     selected_product: { product_id: '', quantity: '1' },
   });
+
+  const [couponCode, setCouponCode] = useState('');
 
   useEffect(() => {
     loadAllPatients();
@@ -128,12 +133,37 @@ export default function PatientsScreen() {
     setProductMenuVisible(false);
   };
 
-  const pickImage = async () => {
+  const pickImage = () => {
+    // RX-02: prescriptions may be multi-page PDFs, not just photos
+    Alert.alert('Prescription Image', 'Choose a file type', [
+      { text: 'Photo', onPress: pickPrescriptionImages },
+      { text: 'PDF Document', onPress: pickPrescriptionDocument },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const pickPrescriptionImages = async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsMultipleSelection: true,
         quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets) {
+        setSelectedFiles((prev) => [...prev, ...result.assets]);
+      }
+    } catch (err) {
+
+    }
+  };
+
+  const pickPrescriptionDocument = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'image/jpeg', 'image/png'],
+        multiple: true,
+        copyToCacheDirectory: true,
       });
 
       if (!result.canceled && result.assets) {
@@ -161,6 +191,32 @@ export default function PatientsScreen() {
         'Please fill all required prescription fields (Product, Dosage Frequency, Quantity)'
       );
       return;
+    }
+
+    // If a coupon code was entered, validate it up-front so we fail fast before
+    // creating the patient/prescription. On success it's forwarded to /prescriptions.
+    let validatedCouponCode: string | undefined;
+    if (couponCode.trim()) {
+      try {
+        const qty = Number(newPrescription.selected_product.quantity) || 1;
+        const orderTotal = selectedProduct?.price ? selectedProduct.price * qty : undefined;
+
+        const validateResponse = await api.post('/coupons/validate', {
+          coupon_code: couponCode.trim().toUpperCase(),
+          doctor_id: doctor?.id,
+          order_total: orderTotal,
+        });
+
+        validatedCouponCode = couponCode.trim().toUpperCase();
+        const discountAmount = validateResponse?.data?.data?.discount_amount;
+        if (discountAmount !== undefined) {
+          Alert.alert('Coupon Applied', `A discount of Rs. ${discountAmount} will be applied to this order.`);
+        }
+      } catch (error: any) {
+        const msg = error?.response?.data?.error?.message || 'Invalid or expired coupon code';
+        Alert.alert('Invalid Coupon', msg);
+        return;
+      }
     }
 
     setLoading(true);
@@ -193,7 +249,7 @@ export default function PatientsScreen() {
         // Find selected city ID
         const selectedCity = cities.find(c => c.name === newPatient.city);
 
-        const prescriptionData = {
+        const prescriptionData: any = {
           patient_id: patientId,
           dosage_frequency: newPrescription.dosage_frequency,
           priority: newPrescription.priority,
@@ -203,6 +259,10 @@ export default function PatientsScreen() {
           },
           city_id: selectedCity?._id, // Include city_id if city is selected
         };
+
+        if (validatedCouponCode) {
+          prescriptionData.coupon_code = validatedCouponCode;
+        }
 
         // Validate the data
         if (isNaN(prescriptionData.selected_product.quantity) || prescriptionData.selected_product.quantity < 1) {
@@ -233,9 +293,11 @@ export default function PatientsScreen() {
           }
         }
 
+        const couponWarning = prescriptionResponse?.data?.data?.coupon_warning;
         Alert.alert(
           'Success',
-          `Patient created with MRN: ${patientMRN}\nPrescription created successfully!`
+          `Patient created with MRN: ${patientMRN}\nPrescription created successfully!` +
+            (couponWarning ? `\n\nNote: ${couponWarning}` : '')
         );
       } catch (prescriptionError: any) {
 
@@ -257,6 +319,7 @@ export default function PatientsScreen() {
       });
       setSelectedProduct(null);
       setSelectedFiles([]);
+      setCouponCode('');
       setCityMenuVisible(false);
       setProductMenuVisible(false);
       loadAllPatients();
@@ -393,6 +456,7 @@ export default function PatientsScreen() {
             setShowDialog(false);
             setSelectedProduct(null);
             setSelectedFiles([]);
+            setCouponCode('');
             setCityMenuVisible(false);
             setProductMenuVisible(false);
           }}
@@ -542,9 +606,22 @@ export default function PatientsScreen() {
                 />
 
                 <Text style={[styles.label, { color: colors.onSurface }]}>Prescription Image</Text>
-                <Button title="Add Image" icon="camera" variant="outlined" onPress={pickImage} style={styles.dialogInput} />
+                <Button title="Add Prescription File" icon="camera" variant="outlined" onPress={pickImage} style={styles.dialogInput} />
 
                 {selectedFiles.length > 0 && <Text style={{ color: colors.onSurface, marginBottom: 24 }}>{selectedFiles.length} image(s) selected</Text>}
+
+                <Text style={[styles.label, { color: colors.onSurface }]}>Have a coupon code?</Text>
+                <TextInput
+                  label="Coupon Code (optional)"
+                  value={couponCode}
+                  onChangeText={(text) => setCouponCode(text.toUpperCase())}
+                  mode="outlined"
+                  autoCapitalize="characters"
+                  style={[styles.dialogInput, { backgroundColor: colors.surface }]}
+                  textColor={colors.onSurface}
+                  outlineColor={colors.outline}
+                  activeOutlineColor={colors.primary}
+                />
               </View>
             </ScrollView>
           </Dialog.ScrollArea>
@@ -556,6 +633,7 @@ export default function PatientsScreen() {
                 setShowDialog(false);
                 setSelectedProduct(null);
                 setSelectedFiles([]);
+                setCouponCode('');
                 setCityMenuVisible(false);
                 setProductMenuVisible(false);
               }}

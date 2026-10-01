@@ -5,11 +5,11 @@ import {
   StyleSheet,
   Dimensions,
   TouchableOpacity,
-  Image,
   ScrollView,
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { BrandColors, ShowcaseDesign } from '../constants/theme';
 
@@ -184,7 +184,9 @@ export default function BannerCarousel({ banners, loading, error, onRefresh }: B
             <Image
               source={{ uri: banner.image_url }}
               style={styles.bannerImage}
-              resizeMode="cover"
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              transition={150}
             />
           </View>
         ))}
